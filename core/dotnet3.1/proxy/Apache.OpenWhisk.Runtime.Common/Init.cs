@@ -67,7 +67,7 @@ namespace Apache.OpenWhisk.Runtime.Common
 
                 JToken message = inputObject["value"];
 
-                if (message["main"] == null || message["binary"] == null || message["code"] == null)
+                if (message?["main"] == null || message["binary"] == null || message["code"] == null)
                 {
                     await httpContext.Response.WriteError("Missing main/no code to execute.");
                     return (null);
@@ -90,30 +90,26 @@ namespace Apache.OpenWhisk.Runtime.Common
                     return (null);
                 }
 
-                string tempPath = Path.Combine(Environment.CurrentDirectory, Guid.NewGuid().ToString());
+                string binPath = Path.Combine(Environment.CurrentDirectory, "bin");
+                if (!Directory.Exists(binPath))
+                    Directory.CreateDirectory(binPath);
                 string base64Zip = message["code"].ToString();
                 try
                 {
-                    using (MemoryStream stream = new MemoryStream(Convert.FromBase64String(base64Zip)))
-                    {
-                        using (ZipArchive archive = new ZipArchive(stream))
-                        {
-                            archive.ExtractToDirectory(tempPath);
-                        }
-                    }
+                    await using MemoryStream stream = new MemoryStream(Convert.FromBase64String(base64Zip));
+                    using ZipArchive archive = new ZipArchive(stream);
+                    archive.ExtractToDirectory(binPath, true);
                 }
                 catch (Exception)
                 {
                     await httpContext.Response.WriteError("Unable to decompress package.");
                     return (null);
                 }
-
-                Environment.CurrentDirectory = tempPath;
-
+                
                 string assemblyFile = $"{mainParts[0]}.dll";
 
-                string assemblyPath = Path.Combine(tempPath, assemblyFile);
-
+                string assemblyPath = Path.Combine(binPath, assemblyFile);
+                
                 if (!File.Exists(assemblyPath))
                 {
                     await httpContext.Response.WriteError($"Unable to locate requested assembly (\"{assemblyFile}\").");
@@ -126,14 +122,17 @@ namespace Apache.OpenWhisk.Runtime.Common
                     if (message["env"] != null && message["env"].HasValues)
                     {
                         Dictionary<string, string> dictEnv = message["env"].ToObject<Dictionary<string, string>>();
-                        foreach (KeyValuePair<string, string> entry in dictEnv) {
-                            // See https://docs.microsoft.com/en-us/dotnet/api/system.environment.setenvironmentvariable
-                            // If entry.Value is null or the empty string, the variable is not set
-                            Environment.SetEnvironmentVariable(entry.Key, entry.Value);
+                        if (dictEnv != null) {
+                            foreach (KeyValuePair<string, string> entry in dictEnv)
+                            {
+                                // See https://docs.microsoft.com/en-us/dotnet/api/system.environment.setenvironmentvariable
+                                // If entry.Value is null or the empty string, the variable is not set
+                                Environment.SetEnvironmentVariable(entry.Key, entry.Value);
+                            }
                         }
                     }
-
-                    Assembly assembly = Assembly.LoadFrom(assemblyPath);
+                    LoadContext context = new LoadContext(assemblyPath);
+                    Assembly assembly = context.LoadFromAssemblyName(new AssemblyName(mainParts[0]));
                     Type = assembly.GetType(mainParts[1]);
                     if (Type == null)
                     {

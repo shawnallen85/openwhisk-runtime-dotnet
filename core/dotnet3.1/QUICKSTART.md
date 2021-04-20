@@ -48,6 +48,28 @@ Install the [Newtonsoft.Json](https://www.newtonsoft.com/json) NuGet package as 
 dotnet add package Newtonsoft.Json -v 13.0.1
 ```
 
+Modify your .csproj file to exclude `Newtonsoft.Json` from being packaged when publishing (avoid conflicts with version deployed with the runtime):
+
+```xml
+<PackageReference Include="Newtonsoft.Json">
+    <Version>13.0.1</Version>
+</PackageReference>
+```
+
+or
+
+```xml
+<PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+```
+
+becomes
+
+```xml
+<PackageReference Include="Newtonsoft.Json" Version="13.0.1">
+    <ExcludeAssets>runtime</ExcludeAssets>
+</PackageReference>
+```
+
 Now create a file called `Hello.cs` with the following content:
 
 Synchronous example:
